@@ -1,0 +1,24 @@
+Installation
+============
+
+Executing **install-gnu.sh** from a unix shell will start the build process.
+The default installation directory is the folder *dep* located in the root
+directory of this project.
+
+```./install-gnu.sh```
+
+Changing the installation directory
+-----------------------------------
+
+You can change the installation directory by specifying a path as an argument:
+```./install-gnu.sh custom-path```
+
+=Linux=
+
+The following packages are required in order to compile the dependencies
+successfully:
+```
+freeglut3-dev libglew-dev libxrandr-dev
+```
+
+
