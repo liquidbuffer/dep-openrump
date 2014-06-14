@@ -2,6 +2,9 @@
 # bash script for building and installing all dependencies locally
 # by TheComet
 
+# report uninitialised variables
+set -u
+
 ###############################################################################
 # get installation prefix
 ###############################################################################
@@ -46,6 +49,19 @@ fi
 ###############################################################################
 # prepare
 ###############################################################################
+
+# read previous installation directory and determine if bootstrap/configure
+# process needs to be repeated
+DO_CONFIGURE=true
+if [ -e "last-build" ]
+then
+	read -r firstline<last-build
+	if [ "$firstline" = "$1" ]
+	then
+		DO_CONFIGURE=false
+	fi
+fi
+echo "$1" >last-build
 
 # build temp directory
 if [ ! -d "build" ]
@@ -99,19 +115,12 @@ function extract_archive {
 	fi
 }
 
-# builds the archive assuming autotools
-#    $1 = archive name
-#    $2 = extracted directory name
-function build_gnu {
-	extract_archive "$1" "$2"
-	cd "$2"
-
-	PREFIX_IN_CONFIGURE=false
+# bootstraps a libtool build
+function build_gnu_bootstrap {
 
 	# do bootstrap if required
-	if [ ! -e "configure" ] && [ -e "bootstrap" ]
+	if [ "$DO_CONFIGURE" = true ] && [ -e "bootstrap" ]
 	then
-		echo "bootstrapping $1..."
 		chmod +x bootstrap
 		./bootstrap
 		if [ $? -ne 0 ]
@@ -119,28 +128,36 @@ function build_gnu {
 			exit 1
 		fi
 	fi
+}
+
+# configure a libtool build
+function build_gnu_configure {
 
 	# do configure if required
-	if [ ! -e "configure.log" ] && [ -e "configure" ]
+	if [ "$DO_CONFIGURE" = true ] && [ -e "configure" ]
 	then
-		echo "configuring $1..."
 		chmod +x configure
-		./configure --prefix="$INSTALL_PREFIX"
+		if [ -z "$1" ]
+		then
+			./configure "--prefix=$INSTALL_PREFIX"
+		else
+			./configure "--prefix=$INSTALL_PREFIX" "$1"
+		fi
 		if [ $? -ne 0 ]
 		then
 			exit 1
 		fi
 		PREFIX_IN_CONFIGURE=true
 	fi
+}
 
-	# build and install
-	echo "building $1..."
+# use gnu make and install
+function build_gnu_make_install {
 	make
 	if [ $? -ne 0 ]
 	then
 		exit 1
 	fi
-	echo "installing $1..."
 	if [ "$PREFIX_IN_CONFIGURE" ]
 	then
 		make install
@@ -151,6 +168,20 @@ function build_gnu {
 	then
 		exit 1
 	fi
+
+}
+
+# builds the archive assuming autotools
+#    $1 = archive name
+#    $2 = extracted directory name
+function build_gnu {
+	extract_archive "$1" "$2"
+	cd "$2"
+	PREFIX_IN_CONFIGURE=false
+
+	build_gnu_bootstrap
+	build_gnu_configure
+	build_gnu_make_install
 
 	cd ..
 }
@@ -163,7 +194,7 @@ function build_cmake {
 	cd "$2"
 
 	# configure if required
-	if [ ! -d "build.gnu" ]
+	if [ ! -d "build.gnu" ] || [ "$DO_CONFIGURE" = true ]
 	then
 		mkdir "build.gnu"
 		cd "build.gnu"
@@ -198,13 +229,13 @@ function build_bjam {
 	cd "$2"
 
 	# bootstrap if required
-	if [ ! -e "b2" ]
+	if [ ! -e "b2" ] || [ "$DO_CONFIGURE" = true ]
 	then
 		if [ -z "$CC" ]
 		then
 			./bootstrap.sh --prefix="$INSTALL_PREFIX"
 		else
-			./bootstrap.sh --prefix="$INSTALL_PREFIX" --with-toolset="$CC" --with-python="$INSTALL_PREFIX"
+			./bootstrap.sh --prefix="$INSTALL_PREFIX" --with-toolset="$CC"
 		fi
 		if [ $? -ne 0 ]
 		then
@@ -217,48 +248,42 @@ function build_bjam {
 	cd ..
 }
 
-# builds the archive assuming bjam
+# builds boost
 #    $1 = archive name
 #    $2 = extracted directory name
-function build_bjam {
+function build_boost {
 	# boost requires a user-config.jam file located in the user's HOME directory
 	# describing where python is located.
 	echo "import toolset : using ;\nusing python\n\t: 2.7\n\t: $INSTALL_PREFIX\n\t;" >~/user-config.jam
-
-	extract_archive "$1" "$2"
-	cd "$2"
-
-	# bootstrap if required
-	if [ ! -e "b2" ]
-	then
-		if [ -z "$CC" ]
-		then
-			./bootstrap.sh --prefix="$INSTALL_PREFIX"
-		else
-			./bootstrap.sh --prefix="$INSTALL_PREFIX" --with-toolset="$CC" --with-python="$INSTALL_PREFIX"
-		fi
-		if [ $? -ne 0 ]
-		then
-			rm ~/user-config.jam
-			exit 1
-		fi
-	fi
-
-	# build
-	./b2 install
-	cd ..
+	build_bjam "$1" "$2"
 	rm ~/user-config.jam
 }
 
-#build_gnu "../packages/Python-2.7.7.tgz" "Python-2.7.7"  # TODO --enable-shared flag for python build
-#build_gnu "../packages/zlib-1.2.8.tar.xz" "zlib-1.2.8"
-#build_gnu "../packages/zziplib-0.13.59.tar.bz2" "zziplib-0.13.59"
-#build_gnu "../packages/FreeImage3160.zip" "FreeImage"
-#build_gnu "../packages/freetype-2.5.3.tar.bz2" "freetype-2.5.3"
-#build_gnu "../packages/ois-v1-3.tar.gz" "ois-v1-3"
-#build_cmake "../packages/bullet-2.82-r2704.tgz" "bullet-2.82-r2704"
+# builds python
+#    $1 = archive name
+#    $2 = extracted directory name
+function build_python {
+	extract_archive "$1" "$2"
+	cd "$2"
+	PREFIX_IN_CONFIGURE=false
+
+	build_gnu_bootstrap
+	build_gnu_configure "--enable-shared"
+	build_gnu_make_install
+
+	cd ..
+
+}
+
+build_python "../packages/Python-2.7.7.tgz" "Python-2.7.7"
+build_gnu "../packages/zlib-1.2.8.tar.xz" "zlib-1.2.8"
+build_gnu "../packages/zziplib-0.13.59.tar.bz2" "zziplib-0.13.59"
+build_gnu "../packages/FreeImage3160.zip" "FreeImage"
+build_gnu "../packages/freetype-2.5.3.tar.bz2" "freetype-2.5.3"
+build_gnu "../packages/ois-v1-3.tar.gz" "ois-v1-3"
+build_cmake "../packages/bullet-2.82-r2704.tgz" "bullet-2.82-r2704"
 build_boost "../packages/boost_1_55_0.tar.bz2" "boost_1_55_0"
-#build_cmake "../packages/ogre_1-9-0.tar.xz" "ogre_1-9-0"
+build_cmake "../packages/ogre_1-9-0.tar.xz" "ogre_1-9-0"
 
 echo "DONE!"
 
