@@ -1,3 +1,4 @@
+#!/bin/bash
 # bash script for building and installing all dependencies locally
 # by TheComet
 
@@ -203,7 +204,7 @@ function build_bjam {
 		then
 			./bootstrap.sh --prefix="$INSTALL_PREFIX"
 		else
-			./bootstrap.sh --prefix="$INSTALL_PREFIX" --with-toolset="$CC"
+			./bootstrap.sh --prefix="$INSTALL_PREFIX" --with-toolset="$CC" --with-python="$INSTALL_PREFIX"
 		fi
 		if [ $? -ne 0 ]
 		then
@@ -216,15 +217,48 @@ function build_bjam {
 	cd ..
 }
 
-build_gnu "../packages/zlib-1.2.8.tar.xz" "zlib-1.2.8"
-build_gnu "../packages/zziplib-0.13.59.tar.bz2" "zziplib-0.13.59"
-build_gnu "../packages/FreeImage3160.zip" "FreeImage"
-build_gnu "../packages/freetype-2.5.3.tar.bz2" "freetype-2.5.3"
-build_gnu "../packages/ois-v1-3.tar.gz" "ois-v1-3"
-build_cmake "../packages/bullet-2.82-r2704.tgz" "bullet-2.82-r2704"
-build_bjam "../packages/boost_1_55_0.tar.bz2" "boost_1_55_0"
-build_cmake "../packages/ogre_1-9-0.tar.xz" "ogre_1-9-0"
-build_gnu "../packages/Python-2.7.7.tgz" "Python-2.7.7"
+# builds the archive assuming bjam
+#    $1 = archive name
+#    $2 = extracted directory name
+function build_bjam {
+	# boost requires a user-config.jam file located in the user's HOME directory
+	# describing where python is located.
+	echo "import toolset : using ;\nusing python\n\t: 2.7\n\t: $INSTALL_PREFIX\n\t;" >~/user-config.jam
+
+	extract_archive "$1" "$2"
+	cd "$2"
+
+	# bootstrap if required
+	if [ ! -e "b2" ]
+	then
+		if [ -z "$CC" ]
+		then
+			./bootstrap.sh --prefix="$INSTALL_PREFIX"
+		else
+			./bootstrap.sh --prefix="$INSTALL_PREFIX" --with-toolset="$CC" --with-python="$INSTALL_PREFIX"
+		fi
+		if [ $? -ne 0 ]
+		then
+			rm ~/user-config.jam
+			exit 1
+		fi
+	fi
+
+	# build
+	./b2 install
+	cd ..
+	rm ~/user-config.jam
+}
+
+#build_gnu "../packages/Python-2.7.7.tgz" "Python-2.7.7"  # TODO --enable-shared flag for python build
+#build_gnu "../packages/zlib-1.2.8.tar.xz" "zlib-1.2.8"
+#build_gnu "../packages/zziplib-0.13.59.tar.bz2" "zziplib-0.13.59"
+#build_gnu "../packages/FreeImage3160.zip" "FreeImage"
+#build_gnu "../packages/freetype-2.5.3.tar.bz2" "freetype-2.5.3"
+#build_gnu "../packages/ois-v1-3.tar.gz" "ois-v1-3"
+#build_cmake "../packages/bullet-2.82-r2704.tgz" "bullet-2.82-r2704"
+build_boost "../packages/boost_1_55_0.tar.bz2" "boost_1_55_0"
+#build_cmake "../packages/ogre_1-9-0.tar.xz" "ogre_1-9-0"
 
 echo "DONE!"
 
